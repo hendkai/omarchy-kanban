@@ -1,0 +1,12 @@
+{
+  "local": {
+    "hermesHome": "~/.hermes"
+  },
+  "remote": {
+    "enabled": false,
+    "host": "kanban-remote",
+    "identityFile": "",
+    "hostKeyAlias": "",
+    "hermesHome": "~/.hermes"
+  }
+}

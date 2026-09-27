@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "hendkai.kanban-progress",
+  "name": "Kanban Progress",
+  "version": "1.1.0",
+  "author": "hendkai",
+  "description": "Read-only kanban progress for a local and an optional remote machine: running tasks, board counts, and a detail popup.",
+  "repository": "https://github.com/hendkai/omarchy-kanban",
+  "homepage": "https://github.com/hendkai/omarchy-kanban",
+  "license": "MIT",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Kanban Progress",
+    "description": "Two chips (Local + optional Remote) showing running kanban tasks; click for details.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {
+      "pollIntervalSec": 15,
+      "chipWidth": 200,
+      "labelPc": "Local",
+      "labelMac": "Remote",
+      "showMac": true
+    },
+    "schema": [
+      {
+        "key": "pollIntervalSec",
+        "type": "integer",
+        "label": "Poll interval (seconds)",
+        "min": 10,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 15
+      },
+      {
+        "key": "chipWidth",
+        "type": "integer",
+        "label": "Chip width (px)",
+        "min": 90,
+        "max": 400,
+        "step": 10,
+        "defaultValue": 200
+      },
+      { "key": "labelPc", "type": "string", "label": "Local chip label" },
+      { "key": "labelMac", "type": "string", "label": "Remote chip label" },
+      {
+        "key": "showMac",
+        "type": "boolean",
+        "label": "Show remote chip",
+        "defaultValue": true
+      },
+      {
+        "key": "pcColor",
+        "type": "string",
+        "label": "Local chip color (#rrggbb)",
+        "defaultValue": "#45d6c5"
+      },
+      {
+        "key": "macColor",
+        "type": "string",
+        "label": "Remote chip color (#rrggbb)",
+        "defaultValue": "#bd93f9"
+      },
+      {
+        "key": "reduceMotion",
+        "type": "boolean",
+        "label": "Reduce motion (disable activity animation)",
+        "defaultValue": false
+      },
+      {
+        "key": "configPath",
+        "type": "string",
+        "label": "Config file path (empty = default ~/.config/omarchy-kanban/config.json)"
+      }
+    ]
+  }
+}
