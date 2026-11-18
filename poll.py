@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Poll wrapper for the hendkai.kanban-progress widget (version 1.1.0).
+"""Poll wrapper for the hendkai.kanban-progress widget (version 1.2.0).
 
 One invocation = one complete refresh of ONE host. QML runs two
 independent subprocesses:

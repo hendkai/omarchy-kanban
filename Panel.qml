@@ -136,7 +136,7 @@ Panel {
             Text {
               Layout.fillWidth: true
               Layout.topMargin: 2
-              text: qsTr("r refreshes · Esc closes · counts are board progress, not task percentages")
+              text: qsTr("▶ running · ◎ review · ! needs you · ⛔ blocked · ◇ ready · ○ todo · ♥ heartbeat · ⏱ run time\nr refreshes · Esc closes · counts are board progress, not task percentages")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -170,6 +170,39 @@ Panel {
     readonly property var totals: hostWidget ? hostWidget.boardTotals(hostKey) : { done: 0, total: 0 }
     readonly property int hbAge: hostWidget ? hostWidget.heartbeatAgeSec(hostKey) : -1
     readonly property string fresh: hostWidget ? hostWidget.hostFresh(hostKey) : "none"
+    readonly property int needsInput: hostWidget ? hostWidget.needsInputCount(hostKey) : 0
+    readonly property int dataAge: hostWidget ? hostWidget.dataAgeSec(hostKey) : -1
+    readonly property string detail: hostWidget ? hostWidget.metaDetail(hostKey) : ""
+    readonly property color attn: hostWidget ? hostWidget.attnColor : "#ffb86c"
+    readonly property real nowMs: hostWidget ? hostWidget.nowMs : Date.now()
+    property bool showAllBoards: false
+
+    function age(sec) { return hostWidget ? hostWidget.fmtAge(sec) : "–" }
+    function sinceSec(epoch) {
+      if (typeof epoch !== "number" || epoch <= 0) return -1
+      return Math.max(0, Math.floor((nowMs - epoch * 1000) / 1000))
+    }
+    // A board is "quiet" when it is readable and has nothing open at all.
+    function isQuiet(b) {
+      if (!b || !b.ok) return false
+      var c = b.status_counts || {}
+      for (var k in c) {
+        if (k === "done" || k === "completed" || k === "cancelled" || k === "archived") continue
+        if (c[k] > 0) return false
+      }
+      return true
+    }
+    readonly property var visibleBoards: {
+      var out = []
+      for (var i = 0; i < boards.length; i++)
+        if (showAllBoards || !isQuiet(boards[i])) out.push(boards[i])
+      return out
+    }
+    readonly property int quietCount: {
+      var n = 0
+      for (var i = 0; i < boards.length; i++) if (isQuiet(boards[i])) n++
+      return n
+    }
 
     Layout.fillWidth: true
     color: Qt.rgba(machineColor.r, machineColor.g, machineColor.b, 0.06)
@@ -218,6 +251,7 @@ Panel {
         Text {
           Layout.fillWidth: true
           text: section.stateLabel(section.hostState)
+            + (section.dataAge >= 0 ? " · " + qsTr("updated ") + section.age(section.dataAge) + qsTr(" ago") : "")
           color: section.hostState === "ok" ? section.dim : section.fg
           font.family: section.fontFamily
           font.pixelSize: Style.font.caption
@@ -233,6 +267,14 @@ Panel {
           font.pixelSize: Style.font.caption
         }
         Text {
+          visible: section.hostState === "ok" && section.needsInput > 0
+          text: "! " + section.needsInput + qsTr(" need you")
+          color: section.attn
+          font.family: section.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+        Text {
           visible: section.hostState === "ok"
           text: section.running > 0 ? section.running + qsTr(" running") : qsTr("nothing running")
           color: section.running > 0 ? section.fg : section.dim
@@ -240,6 +282,20 @@ Panel {
           font.pixelSize: Style.font.caption
           font.bold: section.running > 0
         }
+      }
+
+      // Why a host is offline/broken (ssh rc, timeout, config error, ...).
+      Text {
+        visible: section.hostState !== "ok" && section.hostState !== "loading" && section.detail !== ""
+        Layout.fillWidth: true
+        text: section.detail
+        textFormat: Text.PlainText
+        color: section.dim
+        font.family: section.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WrapAnywhere
+        maximumLineCount: 3
+        elide: Text.ElideRight
       }
 
       // Board counts row: chips per board with counts (board completion).
@@ -251,7 +307,7 @@ Panel {
         spacing: 6
 
         Repeater {
-          model: section.boards
+          model: section.visibleBoards
 
           delegate: Rectangle {
             id: boardChip
@@ -285,12 +341,15 @@ Panel {
               Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: {
-                  if (!counts) return boardChip.modelData && boardChip.modelData.error === "schema" ? qsTr("schema?") : qsTr("IO")
+                  if (!counts) return boardChip.modelData && boardChip.modelData.error === "schema" ? qsTr("schema?") : qsTr("unreadable")
                   var parts = []
+                  var ni = boardChip.modelData.needs_input || 0
                   if (counts.running) parts.push("▶" + counts.running)
-                  if (counts.review) parts.push("▶" + counts.review)
-                  if (counts.blocked) parts.push("⛔" + counts.blocked)
+                  if (counts.review) parts.push("◎" + counts.review)
+                  if (ni) parts.push("!" + ni)
+                  if ((counts.blocked || 0) - ni > 0) parts.push("⛔" + (counts.blocked - ni))
                   if (counts.ready) parts.push("◇" + counts.ready)
+                  if (counts.todo) parts.push("○" + counts.todo)
                   var done = (counts.done || 0) + (counts.completed || 0)
                   var tracked = boardChip.modelData && typeof boardChip.modelData.total === "number"
                     ? boardChip.modelData.total : 0
@@ -306,6 +365,24 @@ Panel {
         }
       }
 
+      Text {
+        visible: section.hostState === "ok" && section.quietCount > 0
+        text: section.showAllBoards
+          ? qsTr("hide quiet boards")
+          : "+" + section.quietCount + qsTr(" quiet boards (all done / empty) — show")
+        color: section.dim
+        font.family: section.fontFamily
+        font.pixelSize: Style.font.caption
+        font.underline: quietMouse.containsMouse
+        MouseArea {
+          id: quietMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: section.showAllBoards = !section.showAllBoards
+        }
+      }
+
       // Active titles grouped by status (running first, ready included)
       ColumnLayout {
         visible: section.hostState === "ok"
@@ -313,45 +390,68 @@ Panel {
         Layout.fillWidth: true
 
         Repeater {
-          model: {
+          id: taskRepeater
+          readonly property int maxRows: 20
+          readonly property var allRows: {
             var out = []
             var boards = section.boards
-            var order = ["running", "review", "blocked", "ready"]
+            // "input" = blocked waiting for a human answer (needs_input)
+            var order = ["running", "review", "input", "blocked", "ready"]
             for (var o = 0; o < order.length; o++) {
               for (var i = 0; i < boards.length; i++) {
                 var b = boards[i]
                 if (!b.ok || !b.active) continue
                 for (var j = 0; j < b.active.length; j++) {
                   var t = b.active[j]
-                  if (t.status === order[o])
-                    out.push({ title: t.title, status: t.status, board: b.name })
+                  var kind = t.status === "blocked" && t.block_kind === "needs_input" ? "input" : t.status
+                  if (kind === order[o])
+                    out.push({ title: t.title, status: kind, board: b.name,
+                               hb: t.heartbeat_at, started: t.started_at })
                 }
               }
             }
-            return out.slice(0, 20)
+            return out
           }
+          model: allRows.slice(0, maxRows)
 
           delegate: RowLayout {
             id: titleRow
             required property var modelData
             Layout.fillWidth: true
             spacing: 6
+            readonly property bool isInput: modelData.status === "input"
             Text {
+              Layout.preferredWidth: 14
+              horizontalAlignment: Text.AlignHCenter
               text: titleRow.modelData.status === "running" ? "▶"
-                : titleRow.modelData.status === "review" ? "👁"
+                : titleRow.modelData.status === "review" ? "◎"
+                : titleRow.isInput ? "!"
                 : titleRow.modelData.status === "blocked" ? "⛔" : "◇"
-              color: section.machineColor
+              color: titleRow.isInput ? section.attn : section.machineColor
               font.family: section.fontFamily
               font.pixelSize: Style.font.caption
+              font.bold: titleRow.isInput
             }
             Text {
               Layout.fillWidth: true
               text: titleRow.modelData.title
-              color: section.fg
+              color: titleRow.isInput ? section.attn : section.fg
               font.family: section.fontFamily
               font.pixelSize: Style.font.caption
               elide: Text.ElideRight
               textFormat: Text.PlainText
+            }
+            // Running: heartbeat age + run time (facts, not progress).
+            Text {
+              visible: titleRow.modelData.status === "running"
+              readonly property int hbAge: section.sinceSec(titleRow.modelData.hb)
+              readonly property int runAge: section.sinceSec(titleRow.modelData.started)
+              text: (hbAge >= 0 ? "♥" + section.age(hbAge) : "")
+                + (runAge >= 0 ? " ⏱" + section.age(runAge) : "")
+              color: hbAge > (section.hostWidget ? section.hostWidget.staleAfterSec : 600)
+                ? section.attn : section.dim
+              font.family: section.fontFamily
+              font.pixelSize: Style.font.caption
             }
             Text {
               text: titleRow.modelData.board
@@ -362,6 +462,14 @@ Panel {
             }
           }
         }
+      }
+
+      Text {
+        visible: section.hostState === "ok" && taskRepeater.allRows.length > taskRepeater.maxRows
+        text: "+" + (taskRepeater.allRows.length - taskRepeater.maxRows) + qsTr(" more")
+        color: section.dim
+        font.family: section.fontFamily
+        font.pixelSize: Style.font.caption
       }
 
       // Board progress line (explicit: NOT task percent)

@@ -26,6 +26,9 @@ BarWidget {
   readonly property color macColor: colorSetting("macColor", "#bd93f9")
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dimText: Qt.alpha(fg, 0.62)
+  // Attention color for tasks blocked on human input (block_kind
+  // needs_input). Fixed, like the machine colors, so it reads on any theme.
+  readonly property color attnColor: colorSetting("attentionColor", "#ffb86c")
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // ---- settings ----------------------------------------------------------
@@ -102,6 +105,35 @@ BarWidget {
     return n
   }
   function runningCount(key) { return countOf(key, "running") }
+  // Blocked tasks that wait for a human answer (Hermes block_kind
+  // needs_input), as opposed to dependency/other blocks.
+  function needsInputCount(key) {
+    var boards = boardsOf(key)
+    var n = 0
+    for (var i = 0; i < boards.length; i++) {
+      var b = boards[i]
+      if (b.ok && typeof b.needs_input === "number") n += Math.max(0, Math.floor(b.needs_input))
+    }
+    return n
+  }
+  // Boards the collector could not read (schema/io) — never silently hidden.
+  function unreadableBoards(key) {
+    var boards = boardsOf(key)
+    var out = []
+    for (var i = 0; i < boards.length; i++)
+      if (!boards[i].ok) out.push(String(boards[i].name) + " (" + String(boards[i].error || "?") + ")")
+    return out
+  }
+  // Age of the last successful collection, seconds (-1 when unknown).
+  function dataAgeSec(key) {
+    var doc = hostDoc(key)
+    if (!doc || typeof doc.generated_at !== "number") return -1
+    return Math.max(0, Math.floor((nowMs - doc.generated_at * 1000) / 1000))
+  }
+  function metaDetail(key) {
+    var m = meta(key)
+    return m && m.detail ? String(m.detail) : ""
+  }
   function blockedCount(key) { return countOf(key, "blocked") }
   function readyCount(key) { return countOf(key, "ready") }
 
@@ -292,7 +324,10 @@ BarWidget {
           state: root.hostState(k),
           running: root.runningCount(k),
           blocked: root.blockedCount(k),
+          needsInput: root.needsInputCount(k),
           ready: root.readyCount(k),
+          unreadable: root.unreadableBoards(k).length,
+          ageSec: root.dataAgeSec(k),
           boards: root.boardsOf(k).length,
           done: tot.done,
           total: tot.total
@@ -368,6 +403,7 @@ BarWidget {
         title: root.rotatedTitle(root.titlesPc)
         running: root.runningCount("pc")
         blocked: root.blockedCount("pc")
+        needsInput: root.needsInputCount("pc")
         ready: root.readyCount("pc")
         fresh: root.hostFresh("pc")
         fontFamily: root.fontFamily
@@ -382,6 +418,7 @@ BarWidget {
         title: root.rotatedTitle(root.titlesMac)
         running: root.runningCount("mac")
         blocked: root.blockedCount("mac")
+        needsInput: root.needsInputCount("mac")
         ready: root.readyCount("mac")
         fresh: root.hostFresh("mac")
         fontFamily: root.fontFamily
@@ -405,14 +442,18 @@ BarWidget {
       if (st === "empty") { lines.push(name + ": " + qsTr("no boards")); continue }
       var r = runningCount(key)
       var bl = blockedCount(key)
+      var ni = needsInputCount(key)
       var tot = boardTotals(key)
       var line = name + ": " + r + " " + qsTr("running")
-      if (bl > 0) line += " · " + bl + " " + qsTr("blocked")
+      if (ni > 0) line += " · " + ni + " " + qsTr("need you")
+      if (bl - ni > 0) line += " · " + (bl - ni) + " " + qsTr("blocked")
       line += " · " + qsTr("boards") + " " + tot.done + "/" + tot.total
       if (hostFresh(key) === "stale") line += " · " + qsTr("Stale")
+      var bad = unreadableBoards(key).length
+      if (bad > 0) line += " · " + bad + " " + qsTr("unreadable")
       lines.push(line)
     }
-    lines.push(qsTr("Click: details"))
+    lines.push(qsTr("Click: details · Middle click: refresh"))
     return lines.join("\n")
   }
 
@@ -425,6 +466,7 @@ BarWidget {
     property string title: ""
     property int running: 0
     property int blocked: 0
+    property int needsInput: 0
     property int ready: 0
     property string fresh: "none"          // fresh|stale|none
     property string fontFamily: ""
@@ -469,7 +511,8 @@ BarWidget {
         anchors.verticalCenter: parent.verticalCenter
         // fixed margins + dot + label + count + 3 gaps; lower-bounded so a
         // long label/count can never drive the elided title width negative
-        width: Math.max(24, chip.width - 14 - dot.width - labelItem.width - countText.width - 18)
+        width: Math.max(24, chip.width - 14 - dot.width - labelItem.width - countText.width
+          - (attnBadge.visible ? attnBadge.width + 6 : 0) - 18)
         text: {
           if (chip.hostStatus === "loading") return qsTr("loading…")
           if (chip.hostStatus === "disabled") return qsTr("not configured")
@@ -480,15 +523,43 @@ BarWidget {
           if (chip.running > 0 && chip.fresh === "stale")
             return qsTr("Stale") + " · " + chip.title
           if (chip.running > 0) return chip.title
+          if (chip.needsInput > 0) {
+            var rest = chip.blocked - chip.needsInput
+            return chip.needsInput + qsTr(" need you")
+              + (rest > 0 ? " · " + rest + qsTr(" blocked") : "")
+          }
           if (chip.blocked > 0) return chip.blocked + qsTr(" blocked")
           if (chip.ready > 0) return chip.ready + qsTr(" ready")
           return qsTr("nothing open")
         }
-        color: chip.hostStatus === "ok" ? root.fg : root.dimText
+        color: chip.hostStatus !== "ok" ? root.dimText
+          : (chip.running === 0 && chip.needsInput > 0 ? root.attnColor : root.fg)
         font.family: chip.fontFamily
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
         textFormat: Text.PlainText
+      }
+      // "needs you" badge, shown next to a running title so a waiting
+      // question is never hidden behind active work.
+      Rectangle {
+        id: attnBadge
+        visible: chip.hostStatus === "ok" && chip.running > 0 && chip.needsInput > 0
+        anchors.verticalCenter: parent.verticalCenter
+        width: visible ? attnText.implicitWidth + 8 : 0
+        height: attnText.implicitHeight + 2
+        radius: height / 2
+        color: Qt.alpha(root.attnColor, 0.18)
+        border.color: Qt.alpha(root.attnColor, 0.7)
+        border.width: 1
+        Text {
+          id: attnText
+          anchors.centerIn: parent
+          text: "!" + chip.needsInput
+          color: root.attnColor
+          font.family: chip.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
       }
       Text {
         id: countText

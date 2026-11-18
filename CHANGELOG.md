@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-11-18
+
+### Added
+
+- "Needs you" state: blocked tasks with Hermes `block_kind = needs_input`
+  are counted separately (`needs_input` per board), shown in the chip
+  ("N need you" or a `!N` badge next to a running title) and listed first
+  among blocked tasks in the popup, in a configurable `attentionColor`.
+- Popup: data age ("updated 12s ago"), the reason a host is offline/broken,
+  heartbeat age and run time per running task, todo counts, and a "+N more"
+  line instead of silently cutting the task list.
+- Popup: fully done/empty boards collapse into "+N quiet boards" (click to
+  show); unreadable boards stay visible.
+- IPC `status` now reports `needsInput`, `unreadable` and `ageSec`.
+
+### Fixed
+
+- WAL boards whose `-shm`/`-wal` files are absent could not be opened
+  read-only on macOS SQLite ("unable to open database file") and showed as
+  `io` errors. Such boards are now re-opened with `immutable=1` — only when
+  no `-wal` content exists, still strictly read-only.
+- 0-byte `kanban.db` placeholders are skipped instead of reported as schema
+  errors; duplicate board names get a numeric suffix.
+- Collector stays Python 3.9 compatible for macOS system Python remotes.
+
 ## [1.1.0] - 2026-09-27
 
 First public/community release. Community plugin — not affiliated with

@@ -27,6 +27,14 @@ Host connection status (connected / offline / error) is reported separately
 from heartbeat freshness. When nothing runs, chips fall back to blocked and
 ready counts ("3 blocked", "2 ready").
 
+**"Needs you"** — blocked tasks whose Hermes `block_kind` is `needs_input`
+wait for a human answer, unlike dependency blocks. They are counted
+separately: the chip shows "2 need you" (or a `!2` badge next to a running
+title), and the popup lists them first among blocked tasks in the
+`attentionColor`. The popup also shows data age, the reason a host is
+offline, heartbeat age (♥) and run time (⏱) per running task; boards that
+are fully done or empty collapse into "+N quiet boards".
+
 ## Install
 
 Standard plugin commands (from any directory):
@@ -121,6 +129,7 @@ plugins from sources you trust.
 | `showMac`        | boolean | `true`               | Show the remote chip; `false` also stops all remote polls.                |
 | `pcColor`        | string  | `#45d6c5` (turquoise)| Local chip accent color (`#rrggbb`).                                      |
 | `macColor`       | string  | `#bd93f9` (violet)   | Remote chip accent color (`#rrggbb`).                                     |
+| `attentionColor` | string  | `#ffb86c` (orange)   | Highlight for "needs you" tasks (`#rrggbb`).                              |
 | `reduceMotion`   | boolean | `false`              | Disable the activity-bar animation.                                       |
 | `configPath`     | string  | *(empty = default)*  | Non-default config file path, passed to both poll processes.              |
 
